@@ -1,7 +1,11 @@
 import base64
+import numpy as np
 import requests
 import vdb
 import vision2 as vision
+
+from io import BytesIO
+from PIL import Image
 
 USAGE = f"""Welcome to the Vector DB Loader.
 Write text to insert in the DB. 
@@ -23,16 +27,10 @@ def image_url_to_base64(url):
     content_type = response.headers.get('Content-Type', 'image/jpeg')  # fallback
     return content_type, base64.b64encode(response.content).decode('utf-8')
 
-from PIL import Image
-from io import BytesIO
-
 
 def load_image(url):
     response = requests.get(url)
     return Image.open(BytesIO(response.content)).convert("RGB")
-
-import numpy as np
-import requests
 
 
 def loader(args):
@@ -81,7 +79,12 @@ def loader(args):
     if len(res) > 0:
       out = f"Found:\n"
       for i in res:
-        out += f"({i[0]:.2f}) {i[1]}\n"
+        img_tag = ''
+        if len(i[2]) > 0:
+          content_type, encoded = image_url_to_base64(i[2])
+          img_src = f'data:{content_type};base64,{encoded}'
+          img_tag = f' <img src="{img_src}" />'
+        out += f"({i[0]:.2f}) {i[1]}{img_tag}\n"
     else:
       out = "Not found"
   # remove a collection
@@ -94,15 +97,14 @@ def loader(args):
   elif inp.startswith("!"):
     count = db.remove_by_substring(inp[1:])
     out = f"Deleted {count} records."
+  # load a picture
   elif inp.startswith("http") and any(file_format in inp for file_format in IMG_FORMATS):
     content_type, encoded = image_url_to_base64(inp)
     img_src = f'data:{content_type};base64,{encoded}'
     vis = vision.Vision(args)
     pic_description = vis.decode(encoded)
     db.insert_pic(inp, pic_description)
-    out = f'Pic description: {pic_description} Image loaded:  {len(img_src)} <img src="{img_src}" />'
-  
-
+    out = f'Image loaded:  {len(img_src)} <img src="{img_src}" /><br /> Image description: {pic_description}'
   elif inp != '':
     out = "Inserted "
     lines = [inp]

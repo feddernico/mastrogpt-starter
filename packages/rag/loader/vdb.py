@@ -1,5 +1,6 @@
 import os, requests as req
 from pymilvus import MilvusClient, DataType
+from pymilvus import Collection
 
 MODEL="mxbai-embed-large:latest"
 DIMENSION_EMBEDDING=1024
@@ -77,9 +78,6 @@ class VectorDB:
     vec = self.embed(description)
     return self.client.insert(self.collection, {"picture_url": pic, "text": description, "embeddings": vec})
   
-  def insert_img(self, img):
-    pass
-  
   def count(self):
     MAX="1000"
     res = self.client.query(collection_name=self.collection, output_fields=["id"], limit=int(MAX))
@@ -90,11 +88,19 @@ class VectorDB:
 
   def vector_search(self, inp, limit=LIMIT):
     vec = self.embed(inp)
+
+    # Describe the collection to get field information
+    result = self.client.describe_collection(collection_name=self.collection)
+    # Check if field exists
+    fields = result['fields']
+    pic_url_exists = any(f["name"] == 'picture_url' for f in fields)
+    output_fields = ['picture_url', 'text'] if pic_url_exists else ['text']
+
     cur = self.client.search(
       collection_name=self.collection,
       search_params={"metric_type": "IP"},
       anns_field="embeddings", data=[vec],
-      output_fields=["text"],
+      output_fields=output_fields,
       limit=limit
     )
     res = []
@@ -102,7 +108,8 @@ class VectorDB:
       for item in cur[0]:
         dist = item.get('distance', 0)
         text = item.get("entity", {}).get("text", "")
-        res.append((dist, text))
+        pic_url = item.get("entity", {}).get("picture_url", "")
+        res.append((dist, text, pic_url))
     return res
 
   def remove_by_substring(self, inp):
